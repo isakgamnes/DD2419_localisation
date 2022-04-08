@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+
+<launch>
+    <arg name="world_name" default="drone_lab"/>
+
+    <arg name='world_url' default='$(find dd2419_resources)/worlds_json/$(arg world_name).world.json'/>
+    <arg name='use_bagfile' default='false'/>
+    <arg name='bag_file' default='ms2_quite_good'/>
+    <param name='/use_sim_time' value='true' if='$(arg use_bagfile)'/>
+    <arg name='rosbag_path' value='/home/isak/Documents/KTH/DD2419_project/rosbags'/>
+    <arg name='use_rviz' default='true'/>
+
+    <node name='pub_landmarks' pkg='localisation' type='publish_landmarks.py' args='$(arg world_url)'/>
+    <node name='odom_publisher' pkg='localisation' type='odom_publisher.py'/>
+    <node name='base_link_publisher' pkg='localisation' type='base_link_publisher.py'>
+        <param name="odom_baselink_topic" value='/cf1/pose'/>
+    <node/>
+    <node name='odom_updater' pkg='localisation' type='odom_updater.py'/>
+    <node pkg="rosbag" type="play" name="player" output="screen" args="--clock $(arg rosbag_path)/$(arg bag_file).bag" if='$(arg use_bagfile)'/>
+    <node type="rviz" name="rviz" pkg="rviz" args="-d $(arg rosbag_path)/rviz/rviz_config.rviz" if="$(arg use_rviz)"/>
+</launch>
