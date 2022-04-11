@@ -8,6 +8,7 @@ from cv2 import transform
 import copy
 
 from torch import inverse
+from genpy import Duration
 import rospy
 import tf2_ros 
 from tf.transformations import * #quaternion_from_euler, euler_from_quaternion, compose_matrix, inverse_matrix, decompose_matrix
@@ -26,18 +27,31 @@ drone_position_updated = False
 landmarks_registrered = False
 landmarks = LandmarkArray().landmarks
 
-def data_assoc(transformed, id):
+def data_assoc(marker):
     global landmarks, init_localisation, landmarks_registrered
+    
     if landmarks_registrered:
         # Check wether or not to use the id to associate
         if init_localisation:
             for landmark in landmarks:
-                # Check if the id of the stored landmarks correspond to the detected
-                if landmark.id == id and landmark.name == 'ArucoMarker':
-                    # Tell the system not to use ID in next iteration
-                    init_localisation = False
-                    return landmark  
+                if landmark.name == 'ArucoMarker':
+                    # Check if the id of the stored landmarks correspond to the detected
+                    if landmark.id == marker.id:
+                        # Tell the system not to use ID in next iteration
+                        init_localisation = False
+                        return landmark  
         else:
+            if not tf_buf.can_transform('map', marker.header.frame_id, marker.header.stamp, timeout=rospy.Duration(.1)):
+                rospy.logwarn_throttle(1, 'Cannot transform from {} to map frame..'.format(marker.header.frame_id))
+                return
+            
+            marker_stamped = PoseStamped()
+
+            marker_stamped.header = marker.header
+            marker_stamped.pose.position = marker.pose.pose.position
+            marker_stamped.pose.orientation = marker.pose.pose.orientation
+
+            transformed = tf_buf.transform(marker_stamped, 'map')
             shortest_dist = float('inf')
             for landmark in landmarks:
                 # Check that we are testing for an Aruco Marker
@@ -51,7 +65,6 @@ def data_assoc(transformed, id):
                     if lm_dist_sq < shortest_dist:
                         shortest_dist = lm_dist_sq
                         assoc_lm = landmark
-
         return assoc_lm
     else: 
         return None
@@ -65,11 +78,8 @@ def data_assoc(transformed, id):
 def estimate_odom_pos(marker):
     global trans_broadcaster
     # Figure out which marker we are looking at
-    
-    observed_lm = data_assoc(marker.pose, marker.id)
 
-    if observed_lm == None:
-        return
+    #rospy.logwarn_throttle(1, marker)
 
     # Create a TransformStamped for the observed lm
     t = TransformStamped()
@@ -78,7 +88,7 @@ def estimate_odom_pos(marker):
     t.header = marker.header
 
     # Give a suitable name to the detected marker's tf. Using the id of the associated landmark
-    t.child_frame_id = 'aruco/detected{}'.format(observed_lm.id)
+    t.child_frame_id = 'aruco/detected{}'.format(marker.id)
 
     # Set the pose and orientation equal to the detected marker pose and orientation
     t.transform.translation = marker.pose.pose.position
@@ -86,6 +96,11 @@ def estimate_odom_pos(marker):
 
     # Send the transform
     trans_broadcaster.sendTransform(t)
+
+    observed_lm = data_assoc(marker)
+
+    if observed_lm == None:
+        return
 
     # Request the transform from Source: 'map' to Target: 'aruco/markerX'
     mTa = tf_buf.lookup_transform('map', 'aruco/marker{}'.format(observed_lm.id), rospy.Duration(.1))

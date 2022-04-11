@@ -85,7 +85,7 @@ if __name__ == "__main__":
     rospy.init_node('base_link_publisher')
     rospy.logwarn('Initialising base_link_publisher')
 
-    odom_updater = rospy.Subscriber(rospy.get_param('~odom_baselink_topic'), PoseStamped, callback=updated_tf_callback)
+    odom_updater = rospy.Subscriber(rospy.get_param('odom_baselink_topic'), PoseStamped, callback=updated_tf_callback)
     tf_buf   = tf2_ros.Buffer()
     tf_lstn  = tf2_ros.TransformListener(tf_buf)
     trans_broadcaster  = tf2_ros.TransformBroadcaster()
