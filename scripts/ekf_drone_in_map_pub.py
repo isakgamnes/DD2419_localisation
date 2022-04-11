@@ -30,17 +30,15 @@ def updated_tf_callback(msg):
         return
 
     
-    pose_in_map = tf_buf.transform(msg, 'map', rospy.rostime.Duration(1))
+    pose_in_map = tf_buf.transform(msg, 'map', rospy.rostime.Duration(.1))
     
     measurement = PoseWithCovarianceStamped()
     measurement.header = pose_in_map.header
     measurement.pose.pose = pose_in_map.pose
     measurement.pose.covariance = measurement_covariance
 
-
     measurement_publisher.publish(measurement)
-
-
+    
 
 if __name__ == "__main__":
     ekf_pose_topic = '/ekf/pose'

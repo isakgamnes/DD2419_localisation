@@ -13,7 +13,7 @@ import rospy
 import tf2_ros 
 from tf.transformations import * #quaternion_from_euler, euler_from_quaternion, compose_matrix, inverse_matrix, decompose_matrix
 import tf2_geometry_msgs
-from geometry_msgs.msg import TransformStamped, Vector3, Pose, PoseStamped, PoseWithCovariance, Transform
+from geometry_msgs.msg import TransformStamped, Vector3, Pose, PoseStamped, PoseWithCovarianceStamped, Transform
 from aruco_msgs.msg import Marker, MarkerArray
 from crazyflie_driver.msg import Position
 import numpy as np
@@ -82,67 +82,82 @@ def estimate_odom_pos(marker):
     #rospy.logwarn_throttle(1, marker)
 
     # Create a TransformStamped for the observed lm
-    t = TransformStamped()
+    detected_from_drone = TransformStamped()
 
     # Give it the same header as the observed landmark
-    t.header = marker.header
+    detected_from_drone.header = marker.header
 
     # Give a suitable name to the detected marker's tf. Using the id of the associated landmark
-    t.child_frame_id = 'aruco/detected{}'.format(marker.id)
+    detected_from_drone.child_frame_id = 'aruco/detected{}'.format(marker.id)
 
     # Set the pose and orientation equal to the detected marker pose and orientation
-    t.transform.translation = marker.pose.pose.position
-    t.transform.rotation = marker.pose.pose.orientation
+    detected_from_drone.transform.translation = marker.pose.pose.position
+    detected_from_drone.transform.rotation = marker.pose.pose.orientation
 
     # Send the transform
-    trans_broadcaster.sendTransform(t)
+    trans_broadcaster.sendTransform(detected_from_drone)
 
     observed_lm = data_assoc(marker)
 
     if observed_lm == None:
         return
 
-    # Request the transform from Source: 'map' to Target: 'aruco/markerX'
-    mTa = tf_buf.lookup_transform('map', 'aruco/marker{}'.format(observed_lm.id), rospy.Duration(.1))
+    # Request the transform from Source: 'aruco/markerX' to Target: 'map'
+    mTa = tf_buf.lookup_transform('map', 'aruco/marker{}'.format(observed_lm.id), time=rospy.Time(0), timeout=rospy.Duration(.1))
+
+    mTa_homogeneous = transformation_functions.transform2homogeneousM(mTa.transform)
+    detected_from_drone_homogeneous = transformation_functions.transform2homogeneousM(detected_from_drone.transform)
+
+    drone_from_detected_homogeneous = inverse_matrix(detected_from_drone_homogeneous)
+    drone_in_map_homogeneous = np.matmul(mTa_homogeneous, drone_from_detected_homogeneous)
+
+    drone_in_map = transformation_functions.homogeneous2transform(drone_in_map_homogeneous)
+
+    mTd = PoseWithCovarianceStamped()
+
+    mTd.header = marker.header
+    mTd.header.frame_id = 'map'
+    mTd.pose.pose.position = drone_in_map.translation
+    mTd.pose.pose.orientation = drone_in_map.rotation
+    mTd.pose.covariance = measurement_covariance
+
+
     # Request the transform from Source: 'aruco/detectedX' to Target: 'map'
-    dTm = tf_buf.lookup_transform('map', t.child_frame_id, marker.header.stamp, timeout=rospy.Duration(.2))
+    # dTm = tf_buf.lookup_transform('map', t.child_frame_id, marker.header.stamp, timeout=rospy.Duration(.2))
     
-    # Find the old odom in map
-    old_odom = tf_buf.lookup_transform('map', 'cf1/odom', marker.header.stamp, timeout=rospy.Duration(.2))
+    # # Find the old odom in map
+    # old_odom = tf_buf.lookup_transform('map', 'cf1/odom', marker.header.stamp, timeout=rospy.Duration(.2))
     
-    odom_diff = transformation_functions.transform_diff(dTm.transform, mTa.transform)
+    # odom_diff = transformation_functions.transform_diff(dTm.transform, mTa.transform)
 
-    new_x = old_odom.transform.translation.x + odom_diff.translation.x
-    new_y = old_odom.transform.translation.y + odom_diff.translation.y
+    # new_x = old_odom.transform.translation.x + odom_diff.translation.x
+    # new_y = old_odom.transform.translation.y + odom_diff.translation.y
 
     
-    # Create the tranformation from 'map' to 'cf1/odom'
-    odom = TransformStamped()
-    odom.header.stamp = marker.header.stamp
-    odom.header.frame_id = 'map'
-    odom.child_frame_id = 'cf1/odom'
-    odom.transform.translation.x = new_x
-    odom.transform.translation.y = new_y
-    odom.transform.translation.z = 0.
+    # # Create the tranformation from 'map' to 'cf1/odom'
+    # odom = TransformStamped()
+    # odom.header.stamp = marker.header.stamp
+    # odom.header.frame_id = 'map'
+    # odom.child_frame_id = 'cf1/odom'
+    # odom.transform.translation.x = new_x    
+    # odom.transform.translation.y = new_y
+    # odom.transform.translation.z = 0.
 
-    """quaternion = (
-    map2odom.rotation.x,
-    map2odom.rotation.y,
-    map2odom.rotation.z,
-    map2odom.rotation.w)"""
-    quaternion = (
-    0.,0.,0.,1.)
+    # quaternion = (
+    # 0.,0.,0.,1.)
 
-    euler = euler_from_quaternion(quaternion)
+    # euler = euler_from_quaternion(quaternion)
 
-    quaternion = quaternion_from_euler(0., 0., euler[2])
+    # quaternion = quaternion_from_euler(0., 0., euler[2])
 
-    odom.transform.rotation.x = quaternion[0]
-    odom.transform.rotation.y = quaternion[1]
-    odom.transform.rotation.z = quaternion[2]
-    odom.transform.rotation.w = quaternion[3]
+    # odom.transform.rotation.x = quaternion[0]
+    # odom.transform.rotation.y = quaternion[1]
+    # odom.transform.rotation.z = quaternion[2]
+    # odom.transform.rotation.w = quaternion[3]
 
-    odom_updated.publish(odom)
+    odom_updated.publish(mTd)
+
+    rospy.logwarn_throttle(1, mTd)
 
     #print(odom)
 
@@ -208,8 +223,14 @@ rospy.init_node('localisation')
 sub_aruco_pos = rospy.Subscriber('/aruco/markers', MarkerArray, aruco_pos_callback, queue_size=1)
 sub_drone_pos = rospy.Subscriber('/cf1/pose', PoseStamped, drone_position_callback)
 marker_array = rospy.Subscriber('landmarks', LandmarkArray, store_landmarks)
-odom_updated = rospy.Publisher('/loc/odom_est', TransformStamped, queue_size=10)
+odom_updated = rospy.Publisher('/ekf/aruco_measurement', PoseWithCovarianceStamped, queue_size=10)
 
+measurement_covariance = [  0.1, 0,    0,    0,    0,    0,    
+                                0,    0.1, 0,    0,    0,    0,    
+                                0,    0,    0,    0,    0,    0,    
+                                0,    0,    0,    0,    0,    0,    
+                                0,    0,    0,    0,    0,    0,    
+                                0,    0,    0,    0,    0,    0.1]
 
 tf_buf   = tf2_ros.Buffer()
 tf_lstn  = tf2_ros.TransformListener(tf_buf)
