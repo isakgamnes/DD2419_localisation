@@ -60,12 +60,19 @@ def updated_tf_callback(msg):
     transformation.transform.translation.y = 0.
     transformation.transform.translation.z = msg.pose.position.z
 
+    quaternion = quaternion_from_euler(0., 0., 0.)
+
+    transformation.transform.rotation.x = quaternion[0]
+    transformation.transform.rotation.y = quaternion[1]
+    transformation.transform.rotation.z = quaternion[2]
+    transformation.transform.rotation.w = quaternion[3]
+
     trans_broadcaster.sendTransform(transformation)
 
     # Make tf base_stabilized -> base_link
     transformation.header.frame_id = base_stabilized_tf_name
     transformation.child_frame_id = base_link_tf_name
-    quaternion = quaternion_from_euler(euler[0], euler[1], euler[2])
+    quaternion = quaternion_from_euler(euler[0], euler[1], 0.)
     
     transformation.transform.translation.z = 0
 

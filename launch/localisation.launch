@@ -20,9 +20,9 @@
     <node name='odom_updater' pkg='localisation' type='odom_updater.py'/>
     <node pkg="rosbag" type="play" name="player" output="screen" args="--clock $(arg rosbag_path)/$(arg bag_file).bag" if='$(arg use_bagfile)'/>
     <node type="rviz" name="rviz" pkg="rviz" args="-d $(arg rosbag_path)/rviz/rviz_config.rviz" if="$(arg use_rviz)"/>
-    <node pkg="robot_localization" type="ekf_localization_node" name="ekf" clear_params="true">
+    <!-- <node pkg="robot_localization" type="ekf_localization_node" name="ekf" clear_params="true">
     <rosparam command="load" file="$(find robot_localization)/params/ekf_localisation.yaml" />
-    </node>
+    </node> -->
     <node name='ekf_pose_measurement' pkg='localisation' type='ekf_drone_in_map_pub.py'/>
 
     <!--  Placeholder for output topic remapping
