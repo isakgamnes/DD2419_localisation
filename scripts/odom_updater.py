@@ -29,7 +29,7 @@ landmarks = LandmarkArray().landmarks
 
 def data_assoc(marker):
     global landmarks, init_localisation, landmarks_registrered
-    
+    assoc_lm = None
     if landmarks_registrered:
         # Check wether or not to use the id to associate
         if init_localisation:
