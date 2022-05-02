@@ -23,6 +23,7 @@
     <rosparam command="load" file="$(find robot_localization)/params/ekf_localisation.yaml" />
     </node> -->
     <node name='ekf_pose_measurement' pkg='localisation' type='ekf_drone_in_map_pub.py'/>
+    <node name='ekf' pkg='localisation' type='ekf.py'/>
 
     <!--  Placeholder for output topic remapping
     <remap from="odometry/filtered" to=""/>

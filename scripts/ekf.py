@@ -233,13 +233,25 @@ def main():
 
 def update_drone_in_map(msg):
     global drone_in_map
-    drone_in_map = [msg.pose.position.x, msg.pose.position.y, msg.pose.position.z, msg.pose.orientation.roll, msg.pose.orientation.pitch, msg.pose.orientation.yaw]
+    
+    drone_in_map = [msg.pose.position.x, 
+                    msg.pose.position.y, 
+                    msg.pose.position.z, 
+                    msg.pose.orientation.x, 
+                    msg.pose.orientation.y, 
+                    msg.pose.orientation.z, 
+                    msg.pose.orientation.w]
+    
+def run_ekf(msg):
+    pass
+
 
 if __name__ == "__main__":
     rospy.init_node('kalman_filter')
     rospy.logwarn('Initialising {}'.format(rospy.get_name()))
     
     pose_updater = rospy.Subscriber('ekf/cf1_pose', PoseStamped, callback=update_drone_in_map)
+    pose_updater = rospy.Subscriber('ekf/cf1_measurement', PoseStamped, callback=run_ekf)
     
     # Variables used for ros
     drone_in_map = [0., 0., 0., 0., 0., 0.]

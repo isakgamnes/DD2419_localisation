@@ -164,16 +164,17 @@ def estimate_odom_pos(marker):
     odom.transform.rotation.w = quaternion[3]
 
     if not init_localisation:
+        trans_broadcaster.sendTransform(odom)
         odom_measurement = TransformStamped()
         odom_measurement.header.stamp = marker.header.stamp
-        odom_measurement.header.frame_id = 'map'
+        odom_measurement.header.frame_id = odom.child_frame_id
         odom_measurement.child_frame_id = 'cf1/base_link_est'
-        odom_measurement.transform.translation.x = odom.transform.translation.x + drone_position.pose.position.x
-        odom_measurement.transform.translation.y = odom.transform.translation.y + drone_position.pose.position.y
-        odom_measurement.transform.translation.z = odom.transform.translation.z + drone_position.pose.position.z
+        odom_measurement.transform.translation.y = drone_position.pose.position.y
+        odom_measurement.transform.translation.x = drone_position.pose.position.x
+        odom_measurement.transform.translation.z = drone_position.pose.position.z
 
         drone_euler = euler_from_quaternion((drone_position.pose.orientation.x, drone_position.pose.orientation.y, drone_position.pose.orientation.z, drone_position.pose.orientation.w))
-        drone_yaw = yaw + drone_euler[2]
+        drone_yaw = drone_euler[2]
         drone_quaternion = quaternion_from_euler(0.,0.,drone_yaw)
         odom_measurement.transform.rotation.x = drone_quaternion[0]
         odom_measurement.transform.rotation.y = drone_quaternion[1]
@@ -182,14 +183,16 @@ def estimate_odom_pos(marker):
 
         trans_broadcaster.sendTransform(odom_measurement)
 
+        drone_in_map = tf_buf.lookup_transform('map', odom_measurement.child_frame_id, marker.header.stamp, rospy.Duration(.1))
+        odom_updated.publish(drone_in_map)
+
     else:
+        odom.child_frame_id = 'cf1/odom'
         trans_broadcaster.sendTransform(odom)
         init_localisation = False
 
 
 def sixD_pose_callback(landmark):
-
-
     rospy.logwarn_throttle(5, 'Got traffic sign lm')
     transform = TransformStamped()
     transform.transform.translation = landmark.pose.position
@@ -231,9 +234,6 @@ def estimate_drone_position(marker):
 
     trans_broadcaster.sendTransform(t)
     
-
-
-
 def store_landmarks(msg):
     global landmarks, landmarks_registrered
     # Store the incoming list of landmarks globally
@@ -261,7 +261,7 @@ sub_aruco_pos = rospy.Subscriber('/aruco/markers', MarkerArray, aruco_pos_callba
 sub_traffic_pos = rospy.Subscriber('/6D_sign', Landmark, sixD_pose_callback, queue_size=1)
 sub_drone_pos = rospy.Subscriber('/cf1/pose', PoseStamped, drone_position_callback)
 marker_array = rospy.Subscriber('landmarks', LandmarkArray, store_landmarks)
-odom_updated = rospy.Publisher('/loc/odom_est', TransformStamped, queue_size=10)
+odom_updated = rospy.Publisher('/ekf/cf1_measurement', TransformStamped, queue_size=10)
 
 measurement_covariance = [  0.1, 0,    0,    0,    0,    0,    
                                 0,    0.1, 0,    0,    0,    0,    

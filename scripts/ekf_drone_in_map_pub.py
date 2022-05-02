@@ -40,7 +40,7 @@ def updated_tf_callback(msg):
 
 if __name__ == "__main__":
     ekf_pose_topic = '/ekf/cf1_pose'
-    rospy.init_node('ekf_pose_measurement')
+    rospy.init_node('ekf_pose_control')
     rospy.logwarn('Initialising {}'.format(rospy.get_name()))
 
     pose_updater = rospy.Subscriber(rospy.get_param('odom_baselink_topic'), PoseStamped, callback=updated_tf_callback)
