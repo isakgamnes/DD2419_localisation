@@ -61,15 +61,6 @@ def main(argv=sys.argv):
             lma.landmarks.append(lm)
 
     pub.publish(lma)
-    
-    
-
-    # Publish these transforms statically forever every 20 second
-
-
-
-
-#rospy.spin()
 
 
 if __name__ == "__main__":

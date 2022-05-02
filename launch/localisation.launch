@@ -4,7 +4,7 @@
     
     <param name="odom_baselink_topic" value='/cf1/pose'/>
 
-    <arg name="world_name" default="flight_trial_2"/>
+    <arg name="world_name" default="isak-apartment"/>
 
     <arg name='world_url' default='$(find dd2419_resources)/worlds_json/$(arg world_name).world.json'/>
     <arg name='use_bagfile' default='false'/>
