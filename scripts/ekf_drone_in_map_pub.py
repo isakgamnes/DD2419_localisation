@@ -32,16 +32,16 @@ def updated_tf_callback(msg):
     
     pose_in_map = tf_buf.transform(msg, 'map', rospy.rostime.Duration(.1))
     
-    measurement = PoseWithCovarianceStamped()
+    measurement = PoseStamped()
     measurement.header = pose_in_map.header
-    measurement.pose.pose = pose_in_map.pose
-    measurement.pose.covariance = measurement_covariance
+    measurement.pose = pose_in_map.pose
+    
 
     measurement_publisher.publish(measurement)
     
 
 if __name__ == "__main__":
-    ekf_pose_topic = '/ekf/pose'
+    ekf_pose_topic = '/ekf/measurement'
     rospy.init_node('ekf_pose_measurement')
     rospy.logwarn('Initialising {}'.format(rospy.get_name()))
 
@@ -53,7 +53,7 @@ if __name__ == "__main__":
                                 0,    0,    0,    0,    0,    0.06]
 
     pose_updater = rospy.Subscriber(rospy.get_param('odom_baselink_topic'), PoseStamped, callback=updated_tf_callback)
-    measurement_publisher = rospy.Publisher(ekf_pose_topic, PoseWithCovarianceStamped)
+    measurement_publisher = rospy.Publisher(ekf_pose_topic, PoseStamped)
     tf_buf   = tf2_ros.Buffer()
     tf_lstn  = tf2_ros.TransformListener(tf_buf)
     trans_broadcaster  = tf2_ros.TransformBroadcaster()
