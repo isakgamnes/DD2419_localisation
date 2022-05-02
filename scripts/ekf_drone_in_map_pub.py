@@ -41,16 +41,9 @@ def updated_tf_callback(msg):
     
 
 if __name__ == "__main__":
-    ekf_pose_topic = '/ekf/measurement'
+    ekf_pose_topic = '/ekf/cf1_pose'
     rospy.init_node('ekf_pose_measurement')
     rospy.logwarn('Initialising {}'.format(rospy.get_name()))
-
-    measurement_covariance = [  0.05, 0,    0,    0,    0,    0,    
-                                0,    0.05, 0,    0,    0,    0,    
-                                0,    0,    0,    0,    0,    0,    
-                                0,    0,    0,    0,    0,    0,    
-                                0,    0,    0,    0,    0,    0,    
-                                0,    0,    0,    0,    0,    0.06]
 
     pose_updater = rospy.Subscriber(rospy.get_param('odom_baselink_topic'), PoseStamped, callback=updated_tf_callback)
     measurement_publisher = rospy.Publisher(ekf_pose_topic, PoseStamped)

@@ -21,9 +21,6 @@ from tf.transformations import *
 from geometry_msgs.msg import Vector3, PoseStamped, PoseWithCovarianceStamped
 from std_msgs.msg import Bool
 
-
-
- 
 # Author: Addison Sears-Collins
 # https://automaticaddison.com
 # Description: Extended Kalman Filter example (two-wheeled mobile robot)
@@ -82,7 +79,7 @@ sensor_noise_w_k = np.array([0.07,0.07,0.04])
 B = np.array([[1., 0., 0.],
               [0., 1., 0.],
               [0., 0., 1.]])
- 
+
 def getB(yaw, deltak):
     """
     Calculates and returns the B matrix
@@ -102,7 +99,7 @@ def getB(yaw, deltak):
     return B
  
 def ekf(z_k_observation_vector, state_estimate_k_minus_1, 
-        control_vector_k_minus_1, P_k_minus_1, dk):
+        control_vector_k_minus_1, P_k_minus_1, B):
     """
     Extended Kalman Filter. Fuses noisy sensor measurement to 
     create an optimal estimate of the state of the robotic system.
@@ -119,7 +116,7 @@ def ekf(z_k_observation_vector, state_estimate_k_minus_1,
             in [meters per second,meters per second,radians per second].
         :param P_k_minus_1 The state covariance matrix estimate at time k-1
             3x3 NumPy Array
-        :param dk Time interval in seconds
+        :param B matrix converting the control input to state k
              
     OUTPUT
         :return state_estimate_k near-optimal state estimate at time k  
@@ -130,7 +127,7 @@ def ekf(z_k_observation_vector, state_estimate_k_minus_1,
     ######################### Predict #############################
     # Predict the state estimate at time k based on the state 
     # estimate at time k-1 and the control input applied at time k-1.
-    state_estimate_k = np.matmul(A_k_minus_1, state_estimate_k_minus_1) + np.matmul(getB(state_estimate_k_minus_1[2],dk),
+    state_estimate_k = np.matmul(A_k_minus_1, state_estimate_k_minus_1) + np.matmul(B,
             control_vector_k_minus_1) + (
             process_noise_v_k_minus_1)
              
@@ -138,8 +135,7 @@ def ekf(z_k_observation_vector, state_estimate_k_minus_1,
              
     # Predict the state covariance estimate based on the previous
     # covariance and some noise
-    P_k = np.matmul(A_k_minus_1, np.matmul(P_k_minus_1, A_k_minus_1.T)) + (
-            Q_k)
+    P_k = np.matmul(A_k_minus_1, np.matmul(P_k_minus_1, A_k_minus_1.T)) + Q_k
          
     ################### Update (Correct) ##########################
     # Calculate the difference between the actual sensor measurements
@@ -221,7 +217,7 @@ def main():
          
         # Run the Extended Kalman Filter and store the 
         # near-optimal state and covariance estimates
-        optimal_state_estimate_k, covariance_estimate_k = ekf(
+        state_estimate_k, P_k = ekf(
             obs_vector_z_k, # Most recent sensor measurement
             state_estimate_k_minus_1, # Our most recent estimate of the state
             control_vector_k_minus_1, # Our most recent control input
@@ -229,21 +225,24 @@ def main():
             dk) # Time interval
          
         # Get ready for the next timestep by updating the variable values
-        state_estimate_k_minus_1 = optimal_state_estimate_k
-        P_k_minus_1 = covariance_estimate_k
+        state_estimate_k_minus_1 = state_estimate_k
+        P_k_minus_1 = P_k
          
         # Print a blank line
         print()
 
-if __name__ == "__main__":
-    #rospy.init_node('kalman_filter')
-    # x_t = A_(t-1)*x_(t-1) + B_(t-1)*u_(t-1) + v(t-1)
-    """A = np.eye(3)
-    B = np.eye(3)
-    H = np.eye(3)
-    """
-    
+def update_drone_in_map(msg):
+    global drone_in_map
+    drone_in_map = [msg.pose.position.x, msg.pose.position.y, msg.pose.position.z, msg.pose.orientation.roll, msg.pose.orientation.pitch, msg.pose.orientation.yaw]
 
+if __name__ == "__main__":
+    rospy.init_node('kalman_filter')
+    rospy.logwarn('Initialising {}'.format(rospy.get_name()))
+    
+    pose_updater = rospy.Subscriber('ekf/cf1_pose', PoseStamped, callback=update_drone_in_map)
+    
+    # Variables used for ros
+    drone_in_map = [0., 0., 0., 0., 0., 0.]
 
     while not rospy.is_shutdown():
         rospy.spin()
