@@ -38,7 +38,6 @@ def data_assoc(marker):
                     # Check if the id of the stored landmarks correspond to the detected
                     if landmark.id == marker.id:
                         # Tell the system not to use ID in next iteration
-                        init_localisation = False
                         return landmark  
         else:
             if not tf_buf.can_transform('map', marker.header.frame_id, marker.header.stamp, timeout=rospy.Duration(.1)):
@@ -76,8 +75,7 @@ def data_assoc(marker):
 
 
 def estimate_odom_pos(marker):
-    global trans_broadcaster
-    # Figure out which marker we are looking at
+    global trans_broadcaster, drone_position, init_localisation
 
     #rospy.logwarn_throttle(1, marker)
 
@@ -97,6 +95,7 @@ def estimate_odom_pos(marker):
     # Send the transform
     trans_broadcaster.sendTransform(detected_from_drone)
 
+    # Figure out which marker we are looking at
     observed_lm = data_assoc(marker)
     
     if observed_lm == None:
@@ -144,7 +143,7 @@ def estimate_odom_pos(marker):
     odom = TransformStamped()
     odom.header.stamp = marker.header.stamp
     odom.header.frame_id = 'map'
-    odom.child_frame_id = 'cf1/odom'
+    odom.child_frame_id = 'cf1/odom_est'
     odom.transform.translation.x = new_x
     odom.transform.translation.y = new_y
     odom.transform.translation.z = 0.
@@ -155,11 +154,6 @@ def estimate_odom_pos(marker):
     euler_diff = euler_from_quaternion(quaternion_diff)
     euler_old = euler_from_quaternion(quaternion_old)
 
-    # rospy.logwarn_throttle(-1, euler_diff[2])
-    # rospy.logwarn_throttle(-1, euler_old[2])
-
-    # roll = euler_old[0] + euler_diff[0]
-    # pitch = euler_old[1] + euler_diff[1]
     yaw = euler_old[2] + euler_diff[2]
 
     quaternion = quaternion_from_euler(0., 0., yaw) 
@@ -169,11 +163,29 @@ def estimate_odom_pos(marker):
     odom.transform.rotation.z = quaternion[2]
     odom.transform.rotation.w = quaternion[3]
 
-    odom_updated.publish(odom)
+    if not init_localisation:
+        odom_measurement = TransformStamped()
+        odom_measurement.header.stamp = marker.header.stamp
+        odom_measurement.header.frame_id = 'map'
+        odom_measurement.child_frame_id = 'cf1/base_link_est'
+        odom_measurement.transform.translation.x = odom.transform.translation.x + drone_position.pose.position.x
+        odom_measurement.transform.translation.y = odom.transform.translation.y + drone_position.pose.position.y
+        odom_measurement.transform.translation.z = odom.transform.translation.z + drone_position.pose.position.z
 
-    #rospy.logwarn_throttle(1, mTd)
+        drone_euler = euler_from_quaternion((drone_position.pose.orientation.x, drone_position.pose.orientation.y, drone_position.pose.orientation.z, drone_position.pose.orientation.w))
+        drone_yaw = yaw + drone_euler[2]
+        drone_quaternion = quaternion_from_euler(0.,0.,drone_yaw)
+        odom_measurement.transform.rotation.x = drone_quaternion[0]
+        odom_measurement.transform.rotation.y = drone_quaternion[1]
+        odom_measurement.transform.rotation.z = drone_quaternion[2]
+        odom_measurement.transform.rotation.w = drone_quaternion[3]
 
-    #print(odom)
+        trans_broadcaster.sendTransform(odom_measurement)
+
+    else:
+        trans_broadcaster.sendTransform(odom)
+        init_localisation = False
+
 
 def sixD_pose_callback(landmark):
 
