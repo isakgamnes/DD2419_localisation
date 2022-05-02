@@ -28,7 +28,6 @@ def updated_tf_callback(msg):
     if not tf_buf.can_transform(msg.header.frame_id, "map", msg.header.stamp, timeout=rospy.Duration(.2)):
         rospy.logwarn_throttle(5.0, 'No transform from %s to map' % msg.header.frame_id)
         return
-
     
     pose_in_map = tf_buf.transform(msg, 'map', rospy.rostime.Duration(.1))
     
@@ -36,7 +35,6 @@ def updated_tf_callback(msg):
     measurement.header = pose_in_map.header
     measurement.pose = pose_in_map.pose
     
-
     measurement_publisher.publish(measurement)
     
 
