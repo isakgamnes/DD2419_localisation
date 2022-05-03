@@ -44,7 +44,7 @@ if __name__ == "__main__":
     rospy.logwarn('Initialising {}'.format(rospy.get_name()))
 
     pose_updater = rospy.Subscriber(rospy.get_param('odom_baselink_topic'), PoseStamped, callback=updated_tf_callback)
-    measurement_publisher = rospy.Publisher(ekf_pose_topic, PoseStamped)
+    measurement_publisher = rospy.Publisher(ekf_pose_topic, PoseStamped, queue_size=10)
     tf_buf   = tf2_ros.Buffer()
     tf_lstn  = tf2_ros.TransformListener(tf_buf)
     trans_broadcaster  = tf2_ros.TransformBroadcaster()

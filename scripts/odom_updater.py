@@ -101,11 +101,11 @@ def estimate_odom_pos(marker):
     if observed_lm == None:
         return
 
-    if observed_lm.id == marker.id:
+    """if observed_lm.id == marker.id:
         rospy.logwarn_throttle(-1, 'Associated the correct marker!')
     else:
         rospy.logwarn_throttle(-1, 'Associated wrong marker..')
-    rospy.logwarn_throttle(-1, 'Associated marker id: {}'.format(observed_lm.id))
+    rospy.logwarn_throttle(-1, 'Associated marker id: {}'.format(observed_lm.id))"""
 
     # Request the transform from Source: 'aruco/markerX' to Target: 'map'
     mTa = tf_buf.lookup_transform('map', 'aruco/marker{}'.format(observed_lm.id), time=rospy.Time(0), timeout=rospy.Duration(.1))
