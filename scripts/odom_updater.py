@@ -101,6 +101,8 @@ def estimate_odom_pos(marker):
     if observed_lm == None:
         return
 
+    # rospy.logwarn_throttle(-1, marker)
+
     """if observed_lm.id == marker.id:
         rospy.logwarn_throttle(-1, 'Associated the correct marker!')
     else:
@@ -244,6 +246,7 @@ def aruco_pos_callback(msg):
     markers = msg.markers
     # Iterate through all the detected markers in the image
     for marker in markers:
+        
         estimate_odom_pos(marker)
 
 def drone_position_callback(msg):
@@ -257,6 +260,10 @@ def main():
     rate.sleep()
 
 rospy.init_node('localisation')
+tf_buf   = tf2_ros.Buffer()
+tf_lstn  = tf2_ros.TransformListener(tf_buf)
+trans_broadcaster  = tf2_ros.TransformBroadcaster()
+rospy.sleep(rospy.Duration(.1))
 sub_aruco_pos = rospy.Subscriber('/aruco/markers', MarkerArray, aruco_pos_callback, queue_size=1)
 sub_traffic_pos = rospy.Subscriber('/6D_sign', Landmark, sixD_pose_callback, queue_size=1)
 sub_drone_pos = rospy.Subscriber('/cf1/pose', PoseStamped, drone_position_callback)
@@ -269,11 +276,6 @@ measurement_covariance = [  0.1, 0,    0,    0,    0,    0,
                                 0,    0,    0,    0,    0,    0,    
                                 0,    0,    0,    0,    0,    0,    
                                 0,    0,    0,    0,    0,    0.1]
-
-tf_buf   = tf2_ros.Buffer()
-tf_lstn  = tf2_ros.TransformListener(tf_buf)
-trans_broadcaster  = tf2_ros.TransformBroadcaster()
-
 
 if __name__ == "__main__":
     rate = rospy.Rate(10)

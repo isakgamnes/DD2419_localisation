@@ -78,7 +78,7 @@ H_k = np.array([[1.0,  0,   0],
 # If we are sure about the measurements, R will be near zero.
 R_k = np.array([[1,   0,    0],
                 [0, 1,    0],
-                [0,   0,  np.pi]])
+                [0,   0,  np.pi/10]])
 
 # Sensor noise. This is a vector with the
 # number of elements equal to the number of sensor measurements.
@@ -121,14 +121,24 @@ def ekf(z_k_observation_vector, state_estimate_k_minus_1,
                         [0, 0.02,   0],
                         [0,   0, 0.01]])
 
+
     ######################### Predict #############################
     # Predict the state estimate at time k based on the state
     # estimate at time k-1 and the control input applied at time k-1.
+    # rospy.logwarn_throttle(1,'B is: {}'.format(B))
     state_estimate_k =  np.matmul(A_k_minus_1, state_estimate_k_minus_1) + \
                         np.matmul(B, control_vector_k_minus_1) + \
                         (process_noise_v_k_minus_1)
+    # rospy.logwarn_throttle(-1, 'Measurement: [{}, {}, {}]'.format(z_k_observation_vector[0],
+    #                                                             z_k_observation_vector[1],
+    #                                                             z_k_observation_vector[2]))
+    # rospy.logerr_throttle(-1, 'State: [{}, {}, {}]'.format(state_estimate_k[0], state_estimate_k[1], state_estimate_k[2]))
 
-    rospy.logwarn_throttle(1,'State Estimate Before EKF={}'.format(state_estimate_k))
+    # rospy.logfatal_throttle(-1, 'Diff state and measurement: [{}, {}, {}]'.format(z_k_observation_vector[0]-state_estimate_k[0],
+    #                                                                             z_k_observation_vector[1] - state_estimate_k[1],
+    #                                                                             z_k_observation_vector[2]-state_estimate_k[2]))
+
+    # rospy.logwarn_throttle(1,'State Estimate Before EKF={}'.format(state_estimate_k))
 
     # Predict the state covariance estimate based on the previous
     # covariance and some noise
@@ -142,7 +152,7 @@ def ekf(z_k_observation_vector, state_estimate_k_minus_1,
         (np.matmul(H_k, state_estimate_k)) + (
             sensor_noise_w_k))
 
-    rospy.logwarn_throttle(1,'Observation={}'.format(z_k_observation_vector))
+    # rospy.logwarn_throttle(1,'Observation={}'.format(z_k_observation_vector))
 
     # Calculate the measurement residual covariance
     S_k = np.matmul(H_k, np.matmul(P_k, H_k.T)) + R_k
@@ -151,12 +161,12 @@ def ekf(z_k_observation_vector, state_estimate_k_minus_1,
     # We use pseudoinverse since some of the matrices might be
     # non-square or singular.
     K_k = np.matmul(P_k, np.matmul(H_k.T, np.linalg.pinv(S_k)))
-    rospy.logwarn_throttle(1, 'Kalman gain: {}'.format(K_k))
+    # rospy.logwarn_throttle(1, 'Kalman gain: {}'.format(K_k))
 
     # Calculate an updated state estimate for time k
     state_estimate_k = state_estimate_k + \
         np.matmul(K_k, measurement_residual_y_k)
-    rospy.logwarn_throttle(1, 'State={}'.format(z_k_observation_vector))
+    # rospy.logwarn_throttle(1, 'State={}'.format(z_k_observation_vector))
     # Update the state covariance estimate for time k
     P_k = P_k - np.matmul(K_k, np.matmul(H_k, P_k))
 
@@ -206,9 +216,9 @@ def run_ekf(msg):
     delta_x = odom_drone_pose_k[0] - odom_drone_pose_k_minus_1[0]
     delta_y = odom_drone_pose_k[1] - odom_drone_pose_k_minus_1[1]
     delta_yaw = odom_drone_pose_k[2] - odom_drone_pose_k_minus_1[2]
-    rospy.logwarn_throttle(1, '{}, {}'.format(odom_drone_pose_k[0], odom_drone_pose_k_minus_1[0]))
+    # rospy.logwarn_throttle(1, '{}, {}'.format(odom_drone_pose_k[0], odom_drone_pose_k_minus_1[0]))
 
-    rospy.logwarn_throttle(1, 'Moved since last update: [{}, {}, {}]'.format(delta_x, delta_y, delta_yaw))
+    
     
     quat = quaternion_from_euler(0., 0., delta_yaw)
 
@@ -218,19 +228,19 @@ def run_ekf(msg):
     distance_travelled.pose.position.y = delta_y
     distance_travelled.pose.position.z = 0.
     distance_travelled.pose.orientation.x = quat[0]
-    distance_travelled.pose.orientation.x = quat[1]
-    distance_travelled.pose.orientation.x = quat[2]
-    distance_travelled.pose.orientation.x = quat[3]
+    distance_travelled.pose.orientation.y = quat[1]
+    distance_travelled.pose.orientation.z = quat[2]
+    distance_travelled.pose.orientation.w = quat[3]
 
     deltas_in_map = tf_buf.transform(distance_travelled, 'map')
 
     delta_euler = euler_from_quaternion((deltas_in_map.pose.orientation.x,
-                                    deltas_in_map.pose.orientation.y,
-                                    deltas_in_map.pose.orientation.z,
-                                    deltas_in_map.pose.orientation.w))
+                                        deltas_in_map.pose.orientation.y,
+                                        deltas_in_map.pose.orientation.z,
+                                        deltas_in_map.pose.orientation.w))
 
     control_vector_k_minus_1 = np.array([deltas_in_map.pose.position.x, deltas_in_map.pose.position.y, delta_euler[2]])
-
+    #rospy.logwarn_throttle(1, 'Measurement: {}'.format(msg))
     state_estimate_k, P_k = ekf(
         measurement_z_k,  # Most recent sensor measurement
         state_estimate_k_minus_1,  # Our most recent estimate of the state
@@ -242,15 +252,21 @@ def run_ekf(msg):
 
     P_k_minus_1 = P_k
 
+    old_odom = tf_buf.lookup_transform('map', 'cf1/odom', msg.header.stamp, timeout=rospy.Duration(.2))
+
+    old_odom_euler = euler_from_quaternion((old_odom.transform.rotation.x, old_odom.transform.rotation.y, old_odom.transform.rotation.z, old_odom.transform.rotation.w))
+    # rospy.logwarn_throttle(-1, (state_estimate_k[0] - drone_in_map[0]))
+    # rospy.logwarn_throttle(-1, (state_estimate_k[1] - drone_in_map[1]))
     updated_odom = TransformStamped()
     updated_odom.header = msg.header
     updated_odom.header.frame_id = 'map'
     updated_odom.child_frame_id = 'cf1/odom'
-    updated_odom.transform.translation.x = state_estimate_k[0] - odom_drone_pose_k[0]
-    updated_odom.transform.translation.y = state_estimate_k[1] - odom_drone_pose_k[1]
+    updated_odom.transform.translation.x = old_odom.transform.translation.x + (state_estimate_k[0] - drone_in_map[0])
+    updated_odom.transform.translation.y = old_odom.transform.translation.y + (state_estimate_k[1] - drone_in_map[1])
     updated_odom.transform.translation.z = 0.
 
-    quaternion_odom = quaternion_from_euler(0., 0., state_estimate_k[2]-odom_drone_pose_k[2])
+    rospy.logwarn_throttle(1, (state_estimate_k[2] - drone_in_map[5]))
+    quaternion_odom = quaternion_from_euler(0., 0., old_odom_euler[2] + (state_estimate_k[2] - drone_in_map[5]))
     updated_odom.transform.rotation.x = quaternion_odom[0]
     updated_odom.transform.rotation.y = quaternion_odom[1]
     updated_odom.transform.rotation.z = quaternion_odom[2]
