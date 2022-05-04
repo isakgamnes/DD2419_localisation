@@ -4,7 +4,7 @@ import queue
 import sys
 import math
 import json
-from cv2 import transform
+from cv2 import Mahalanobis, transform
 import copy
 
 from torch import inverse
@@ -19,6 +19,7 @@ from crazyflie_driver.msg import Position
 import numpy as np
 from localisation.msg import Landmark, LandmarkArray
 import transformation_functions
+from scipy.spatial.distance import mahalanobis
 
 goal_tf = 'map'
 drone_position = PoseStamped()
@@ -51,15 +52,26 @@ def data_assoc(marker):
             marker_stamped.pose.orientation = marker.pose.pose.orientation
 
             transformed = tf_buf.transform(marker_stamped, 'map')
+            mahalanobis_observed = [transformed.pose.position.x, transformed.pose.position.y,\
+                                    transformed.pose.position.z, transformed.pose.orientation.x,\
+                                    transformed.pose.orientation.y, transformed.pose.orientation.z,\
+                                    transformed.pose.orientation.w]
+            covariance_mahalanobis = np.eye(len(mahalanobis_observed))
+            # covariance_mahalanobis[3,3] = 50
+            # covariance_mahalanobis[4,4] = 50
+            # covariance_mahalanobis[5,5] = 50
+            # covariance_mahalanobis[6,6] = 50
             shortest_dist = float('inf')
             for landmark in landmarks:
                 # Check that we are testing for an Aruco Marker
                 if landmark.name == 'ArucoMarker':
-                    position = [landmark.pose.position.x, landmark.pose.position.y, landmark.pose.position.z]
+                    position = [landmark.pose.position.x, landmark.pose.position.y, landmark.pose.position.z,\
+                                landmark.pose.orientation.x, landmark.pose.orientation.y, \
+                                landmark.pose.orientation.z, landmark.pose.orientation.w]
                     # Calculate the distance to the current Aruco Marker
-                    lm_dist_sq =(position[0] - transformed.pose.position.x)**2 + \
-                                (position[1] - transformed.pose.position.y)**2 + \
-                                (position[2] - transformed.pose.position.z)**2
+                    lm_dist_sq = mahalanobis(mahalanobis_observed, position, covariance_mahalanobis)
+                    rospy.logwarn_throttle(-1, 'Marker with id: {}, Mahalanobis distance: {}'.format(landmark.id, lm_dist_sq))
+                    #rospy.logwarn_throttle(-1, 'ID: {}, position: {}'.format(landmark.id,position))
                     # If the distance is shorter than the shorest distance, store this marker
                     if lm_dist_sq < shortest_dist:
                         shortest_dist = lm_dist_sq
@@ -190,7 +202,8 @@ def estimate_odom_pos(marker):
 
     else:
         odom.child_frame_id = 'cf1/odom'
-        trans_broadcaster.sendTransform(odom)
+        odom_publisher.publish(odom)
+        #trans_broadcaster.sendTransform(odom)
         init_localisation = False
 
 
@@ -269,6 +282,7 @@ sub_traffic_pos = rospy.Subscriber('/6D_sign', Landmark, sixD_pose_callback, que
 sub_drone_pos = rospy.Subscriber('/cf1/pose', PoseStamped, drone_position_callback)
 marker_array = rospy.Subscriber('landmarks', LandmarkArray, store_landmarks)
 odom_updated = rospy.Publisher('/ekf/cf1_measurement', TransformStamped, queue_size=10)
+odom_publisher = rospy.Publisher('/loc/odom_est', TransformStamped, queue_size=10)
 
 measurement_covariance = [  0.1, 0,    0,    0,    0,    0,    
                                 0,    0.1, 0,    0,    0,    0,    

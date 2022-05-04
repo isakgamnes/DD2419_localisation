@@ -59,7 +59,7 @@ process_noise_v_k_minus_1 = np.array([0.02, 0.02, 0.06])
 # Q is a square matrix that has the same number of rows as states.
 Q_k = np.array([[0.02,   0,   0],
                 [0, 0.02,   0],
-                [0,   0, 0.01]])
+                [0,   0, 0.05]])
 
 # Measurement matrix H_k
 # Used to convert the predicted state estimate at time k
@@ -77,8 +77,8 @@ H_k = np.array([[1.0,  0,   0],
 # Has the same number of rows and columns as sensor measurements.
 # If we are sure about the measurements, R will be near zero.
 R_k = np.array([[1,   0,    0],
-                [0, 1,    0],
-                [0,   0,  np.pi/10]])
+                [0,   1,    0],
+                [0,   0,  np.pi/4]])
 
 # Sensor noise. This is a vector with the
 # number of elements equal to the number of sensor measurements.
@@ -265,7 +265,7 @@ def run_ekf(msg):
     updated_odom.transform.translation.y = old_odom.transform.translation.y + (state_estimate_k[1] - drone_in_map[1])
     updated_odom.transform.translation.z = 0.
 
-    rospy.logwarn_throttle(1, (state_estimate_k[2] - drone_in_map[5]))
+    # rospy.logwarn_throttle(1, (state_estimate_k[2] - drone_in_map[5]))
     quaternion_odom = quaternion_from_euler(0., 0., old_odom_euler[2] + (state_estimate_k[2] - drone_in_map[5]))
     updated_odom.transform.rotation.x = quaternion_odom[0]
     updated_odom.transform.rotation.y = quaternion_odom[1]
