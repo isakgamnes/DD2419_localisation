@@ -4,7 +4,7 @@ import rospy
 from geometry_msgs.msg import Vector3
 import tf2_ros 
 from tf.transformations import *
-from geometry_msgs.msg import TransformStamped, Vector3, Quaternion
+from geometry_msgs.msg import TransformStamped, Vector3, Quaternion, PoseStamped
 from std_msgs.msg import Bool
 import time
 
@@ -26,7 +26,15 @@ def main():
 
 def updated_odom_callback(msg):
     global odom_trans, is_localized, last_time_odom_was_uptdated
-    odom_trans = msg
+    odom_trans.transform.translation.x = msg.pose.position.x
+    odom_trans.transform.translation.y = msg.pose.position.y
+    odom_trans.transform.translation.z = msg.pose.position.z
+
+    odom_trans.transform.rotation.x = msg.pose.orientation.x
+    odom_trans.transform.rotation.y = msg.pose.orientation.y
+    odom_trans.transform.rotation.z = msg.pose.orientation.z
+    odom_trans.transform.rotation.w = msg.pose.orientation.w
+    
     last_time_odom_was_uptdated = time.time()
     if not is_localized.data:
         is_localized.data = True
@@ -61,7 +69,7 @@ if __name__ == "__main__":
 
     pub_localized = rospy.Publisher('/loc/is_localized', Bool, queue_size=10)
     
-    odom_updater = rospy.Subscriber('/loc/odom_est', TransformStamped, callback=updated_odom_callback)
+    odom_updater = rospy.Subscriber('/loc/odom_est', PoseStamped, callback=updated_odom_callback)
     tf_buf   = tf2_ros.Buffer()
     tf_lstn  = tf2_ros.TransformListener(tf_buf)
     trans_broadcaster  = tf2_ros.TransformBroadcaster()

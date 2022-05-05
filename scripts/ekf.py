@@ -51,15 +51,15 @@ B = np.array([[1., 0., 0.],
 # of the estimated state at time k from the state
 # transition model of the mobile robot). This is a vector
 # with the number of elements equal to the number of states
-process_noise_v_k_minus_1 = np.array([0.02, 0.02, 0.06])
+process_noise_v_k_minus_1 = np.array([0.001, 0.001, 0.001])
 
 # State model noise covariance matrix Q_k
 # When Q is large, the Kalman Filter tracks large changes in
 # the sensor measurements more closely than for smaller Q.
 # Q is a square matrix that has the same number of rows as states.
-Q_k = np.array([[0.1,   0,   0],
-                [0, 0.1,   0],
-                [0,   0, 0.005]])
+Q_k = np.array([[1,   0,   0],
+                [0, 1,   0],
+                [0,   0, 1]])
 
 # Measurement matrix H_k
 # Used to convert the predicted state estimate at time k
@@ -76,16 +76,16 @@ H_k = np.array([[1.0,  0,   0],
 # Sensor measurement noise covariance matrix R_k
 # Has the same number of rows and columns as sensor measurements.
 # If we are sure about the measurements, R will be near zero.
-R_k = np.array([[.75,   0,    0],
-                [0,   .75,    0],
-                [0,   0,  np.pi/8]])
+R_k = np.array([[.1,   0,    0],
+                [0,   .1,    0],
+                [0,   0,    .1]])
 
 # Sensor noise. This is a vector with the
 # number of elements equal to the number of sensor measurements.
 sensor_noise_w_k = np.array([0.05, 0.05, np.pi/12])
 
 def ekf(z_k_observation_vector, state_estimate_k_minus_1,
-        control_vector_k_minus_1, P_k_minus_1, B):
+        P_k_minus_1):
     global first_ekf_run, Q_k
     """
     Extended Kalman Filter. Fuses noisy sensor measurement to 
@@ -126,9 +126,7 @@ def ekf(z_k_observation_vector, state_estimate_k_minus_1,
     # Predict the state estimate at time k based on the state
     # estimate at time k-1 and the control input applied at time k-1.
     # rospy.logwarn_throttle(1,'B is: {}'.format(B))
-    state_estimate_k =  np.matmul(A_k_minus_1, state_estimate_k_minus_1) + \
-                        np.matmul(B, control_vector_k_minus_1) + \
-                        (process_noise_v_k_minus_1)
+    state_estimate_k =  np.matmul(A_k_minus_1, state_estimate_k_minus_1) + process_noise_v_k_minus_1
     # rospy.logwarn_throttle(-1, 'Measurement: [{}, {}, {}]'.format(z_k_observation_vector[0],
     #                                                             z_k_observation_vector[1],
     #                                                             z_k_observation_vector[2]))
@@ -201,75 +199,38 @@ def run_ekf(msg):
             state_estimate_k_minus_1, odom_drone_pose_k, \
             drone_in_map_k_minus_1, odom_drone_pose_k_minus_1
 
-    measurement_euler = euler_from_quaternion((msg.transform.rotation.x,
-                                              msg.transform.rotation.y,
-                                              msg.transform.rotation.z,
-                                              msg.transform.rotation.w))
+    measurement_euler = euler_from_quaternion((msg.pose.orientation.x,
+                                              msg.pose.orientation.y,
+                                              msg.pose.orientation.z,
+                                              msg.pose.orientation.w))
 
-    measurement_z_k = np.array([msg.transform.translation.x, 
-                                msg.transform.translation.y, 
+    measurement_z_k = np.array([msg.pose.position.x, 
+                                msg.pose.position.y, 
                                 measurement_euler[2]])
-
-    # Find the distance traveled since the last update
-    delta_x = odom_drone_pose_k[0] - odom_drone_pose_k_minus_1[0]
-    delta_y = odom_drone_pose_k[1] - odom_drone_pose_k_minus_1[1]
-    delta_yaw = odom_drone_pose_k[2] - odom_drone_pose_k_minus_1[2]
-    # rospy.logwarn_throttle(1, '{}, {}'.format(odom_drone_pose_k[0], odom_drone_pose_k_minus_1[0]))
-
-    
-    
-    quat = quaternion_from_euler(0., 0., delta_yaw)
-
-    distance_travelled = PoseStamped()
-    distance_travelled.header = msg.header
-    distance_travelled.pose.position.x = delta_x
-    distance_travelled.pose.position.y = delta_y
-    distance_travelled.pose.position.z = 0.
-    distance_travelled.pose.orientation.x = quat[0]
-    distance_travelled.pose.orientation.y = quat[1]
-    distance_travelled.pose.orientation.z = quat[2]
-    distance_travelled.pose.orientation.w = quat[3]
-
-    deltas_in_map = tf_buf.transform(distance_travelled, 'map')
-
-    delta_euler = euler_from_quaternion((deltas_in_map.pose.orientation.x,
-                                        deltas_in_map.pose.orientation.y,
-                                        deltas_in_map.pose.orientation.z,
-                                        deltas_in_map.pose.orientation.w))
-
-    control_vector_k_minus_1 = np.array([deltas_in_map.pose.position.x, deltas_in_map.pose.position.y, delta_euler[2]])
-    #rospy.logwarn_throttle(1, 'Measurement: {}'.format(msg))
     
     state_estimate_k, P_k = ekf(
         measurement_z_k,  # Most recent sensor measurement
         state_estimate_k_minus_1,  # Our most recent estimate of the state
-        control_vector_k_minus_1,  # Our most recent control input
         P_k_minus_1,  # Our most recent state covariance matrix
-        B)  # Time interval
+        ) 
 
     time_stamp_last_update = time()
 
     P_k_minus_1 = P_k
 
-    old_odom = tf_buf.lookup_transform('map', 'cf1/odom', msg.header.stamp, timeout=rospy.Duration(.2))
-
-    old_odom_euler = euler_from_quaternion((old_odom.transform.rotation.x, old_odom.transform.rotation.y, old_odom.transform.rotation.z, old_odom.transform.rotation.w))
     # rospy.logwarn_throttle(-1, (state_estimate_k[0] - drone_in_map[0]))
     # rospy.logwarn_throttle(-1, (state_estimate_k[1] - drone_in_map[1]))
-    updated_odom = TransformStamped()
+    updated_odom = PoseStamped()
     updated_odom.header = msg.header
     updated_odom.header.frame_id = 'map'
-    updated_odom.child_frame_id = 'cf1/odom'
-    updated_odom.transform.translation.x = old_odom.transform.translation.x + (state_estimate_k[0] - drone_in_map[0])
-    updated_odom.transform.translation.y = old_odom.transform.translation.y + (state_estimate_k[1] - drone_in_map[1])
-    updated_odom.transform.translation.z = 0.
-
-    # rospy.logwarn_throttle(1, (state_estimate_k[2] - drone_in_map[5]))
-    quaternion_odom = quaternion_from_euler(0., 0., old_odom_euler[2] + (state_estimate_k[2] - drone_in_map[5]))
-    updated_odom.transform.rotation.x = quaternion_odom[0]
-    updated_odom.transform.rotation.y = quaternion_odom[1]
-    updated_odom.transform.rotation.z = quaternion_odom[2]
-    updated_odom.transform.rotation.w = quaternion_odom[3]
+    updated_odom.pose.position.x = state_estimate_k[0]
+    updated_odom.pose.position.y = state_estimate_k[1]
+    updated_odom.pose.position.z = 0.
+    
+    (updated_odom.pose.orientation.x,
+    updated_odom.pose.orientation.y,
+    updated_odom.pose.orientation.z,
+    updated_odom.pose.orientation.w) = quaternion_from_euler(0., 0., state_estimate_k[2])
 
     """if check_pose_in_airspace([state_estimate_k[0], state_estimate_k[1]]) \
     and check_pose_in_airspace([updated_odom.transform.rotation.x, updated_odom.transform.rotation.y]):
@@ -314,8 +275,8 @@ if __name__ == "__main__":
 
     pose_updater = rospy.Subscriber('ekf/cf1_pose', PoseStamped, callback=update_drone_in_map)
     odom_drone_updater = rospy.Subscriber(rospy.get_param('odom_baselink_topic'), PoseStamped, callback=update_odom_drone)
-    pose_updater = rospy.Subscriber('ekf/cf1_measurement', TransformStamped, callback=run_ekf)
-    odom_publisher = rospy.Publisher('/loc/odom_est', TransformStamped, queue_size=10)
+    pose_updater = rospy.Subscriber('ekf/cf1_measurement', PoseStamped, callback=run_ekf)
+    odom_publisher = rospy.Publisher('/loc/odom_est', PoseStamped, queue_size=10)
 
     # Variables used for ros
     drone_in_map = np.array([0., 0., 0., 0., 0., 0.])

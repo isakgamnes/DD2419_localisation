@@ -44,21 +44,14 @@ def data_assoc(marker):
             if not tf_buf.can_transform('map', marker.header.frame_id, marker.header.stamp, timeout=rospy.Duration(.1)):
                 rospy.logwarn_throttle(1, 'Cannot transform from {} to map frame..'.format(marker.header.frame_id))
                 return
-            
-            marker_stamped = PoseStamped()
-
-            marker_stamped.header = marker.header
-            marker_stamped.pose.position = marker.pose.pose.position
-            marker_stamped.pose.orientation = marker.pose.pose.orientation
-
-            transformed = tf_buf.transform(marker_stamped, 'map')
-            observed_marker_xyz = np.array([transformed.pose.position.x, transformed.pose.position.y,\
-                                    transformed.pose.position.z])
+        
+            observed_marker_xyz = np.array([marker.pose.position.x, marker.pose.position.y,\
+                                    marker.pose.position.z])
             # Normalize the xyz coordinates
-            observed_marker_xyz = observed_marker_xyz/float(np.linalg.norm(observed_marker_xyz))
+            observed_marker_xyz = observed_marker_xyz/np.linalg.norm(observed_marker_xyz)
 
-            observed_marker_rpy =  np.array([transformed.pose.orientation.x, transformed.pose.orientation.y,\
-                                    transformed.pose.orientation.z, transformed.pose.orientation.w])
+            observed_marker_rpy =  np.array([marker.pose.orientation.x, marker.pose.orientation.y,\
+                                    marker.pose.orientation.z, marker.pose.orientation.w])
             
             observed_marker = np.concatenate((observed_marker_xyz, observed_marker_rpy))
 
@@ -67,11 +60,12 @@ def data_assoc(marker):
                 # Check that we are testing for an Aruco Marker
                 if landmark.name == 'ArucoMarker':
                     marker_xyz = np.array([landmark.pose.position.x, landmark.pose.position.y, \
-                                landmark.pose.position.z])
-                    marker_xyz = marker_xyz/float(np.linalg.norm(marker_xyz))
+                                           landmark.pose.position.z])
+                    marker_xyz = marker_xyz/np.linalg.norm(marker_xyz)
 
                     marker_rpy = np.array([landmark.pose.orientation.x, landmark.pose.orientation.y,\
-                                 landmark.pose.orientation.z, landmark.pose.orientation.w])
+                                           landmark.pose.orientation.z, landmark.pose.orientation.w])
+                    
                     marker_pose = np.concatenate((marker_xyz, marker_rpy))
                     
                     lm_dist = np.linalg.norm(observed_marker - marker_pose)
@@ -95,119 +89,78 @@ def data_assoc(marker):
 def estimate_odom_pos(marker):
     global trans_broadcaster, drone_position, init_localisation
 
-    #rospy.logwarn_throttle(1, marker)
+    # Create Pose object from the detected marker
+    marker_pose = PoseStamped()
+    marker_pose.header = marker.header
+    marker_pose.pose = marker.pose.pose
 
-    # Create a TransformStamped for the observed lm
-    detected_from_drone = TransformStamped()
-
-    # Give it the same header as the observed landmark
-    detected_from_drone.header = marker.header
-
-    # Give a suitable name to the detected marker's tf. Using the id of the associated landmark
-    detected_from_drone.child_frame_id = 'aruco/detected{}'.format(marker.id)
-
-    # Set the pose and orientation equal to the detected marker pose and orientation
-    detected_from_drone.transform.translation = marker.pose.pose.position
-    detected_from_drone.transform.rotation = marker.pose.pose.orientation
-
-    # Send the transform
-    trans_broadcaster.sendTransform(detected_from_drone)
-
-    # Figure out which marker we are looking at
-    observed_lm = data_assoc(marker)
+    # Get the transformation from map to the camera frame
+    map_camera_transformation = tf_buf.lookup_transform('map', marker.header.frame_id, marker.header.stamp, rospy.Duration(.1))
+    # Get the transformation from odom to the camera frame
+    odom_camera_transformation = tf_buf.lookup_transform('cf1/odom', marker.header.frame_id, marker.header.stamp, rospy.Duration(.1))
     
+    # Convert the detected marker into the map frame
+    marker_in_map = tf2_geometry_msgs.do_transform_pose(marker_pose, map_camera_transformation)
+    # Convert the detected marker into the odom frame
+    marker_in_odom = tf2_geometry_msgs.do_transform_pose(marker_pose, odom_camera_transformation)
+
+    if init_localisation:
+        # Figure out which marker we are looking at
+        observed_lm = data_assoc(marker)
+    else:
+        observed_lm = data_assoc(marker_in_map)
+    # Check if it managed to associate
     if observed_lm == None:
         return
-
-    # rospy.logwarn_throttle(-1, marker)
-
-    """if observed_lm.id == marker.id:
-        rospy.logwarn_throttle(-1, 'Associated the correct marker!')
+    
+    # DEBUG: print wether or not it was the correct marker
+    if observed_lm.id == marker.id:
+        rospy.logwarn('Associated correct marker')
     else:
-        rospy.logwarn_throttle(-1, 'Associated wrong marker..')
-    rospy.logwarn_throttle(-1, 'Associated marker id: {}'.format(observed_lm.id))"""
+        rospy.logwarn('Associated wrong marker')
 
-    # Request the transform from Source: 'aruco/markerX' to Target: 'map'
-    mTa = tf_buf.lookup_transform('map', 'aruco/marker{}'.format(observed_lm.id), time=rospy.Time(0), timeout=rospy.Duration(.1))
+    # Get the marker position and orientation in the odom frame
+    marker_position = marker_in_odom.pose.position
+    marker_orientation = marker_in_odom.pose.orientation
 
-    # mTa_homogeneous = transformation_functions.transform2homogeneousM(mTa.transform)
-    # detected_from_drone_homogeneous = transformation_functions.transform2homogeneousM(detected_from_drone.transform)
-
-    # drone_from_detected_homogeneous = inverse_matrix(detected_from_drone_homogeneous)
-    # drone_in_map_homogeneous = np.matmul(mTa_homogeneous, drone_from_detected_homogeneous)
-
-    # drone_in_map = transformation_functions.homogeneous2transform(drone_in_map_homogeneous)
-
-    # mTd = PoseWithCovarianceStamped()
-
-    # mTd.header = marker.header
-    # mTd.header.frame_id = 'map'
-    # mTd.pose.pose.position = drone_in_map.translation
-    # mTd.pose.pose.orientation = drone_in_map.rotation
-    # mTd.pose.covariance = measurement_covariance
-
-
-    # Request the transform from Source: 'aruco/detectedX' to Target: 'map'
-    dTm = tf_buf.lookup_transform('map', detected_from_drone.child_frame_id, marker.header.stamp, timeout=rospy.Duration(.2))
+    # Create a quaternion matrix from the detected marker and invert it
+    marker_odom_transformation = inverse_matrix(quaternion_matrix([marker_orientation.x, marker_orientation.y, \
+                                                                      marker_orientation.z, marker_orientation.w]))
     
-    # Find the old odom in map
-    old_odom = tf_buf.lookup_transform('map', 'cf1/odom', marker.header.stamp, timeout=rospy.Duration(.2))
+    # Define the translation in the transformation matrix
+    marker_odom_transformation[0:4, 3] = np.matmul(marker_odom_transformation, np.array([-marker_position.x,\
+                                                                                         -marker_position.y,\
+                                                                                         -marker_position.z,\
+                                                                                             1]))
+
+    # Create matrix from the associated marker
+    detected_marker_position = np.array([observed_lm.pose.position.x, observed_lm.pose.position.y, observed_lm.pose.position.z])
     
-    odom_diff = transformation_functions.transform_diff(dTm.transform, mTa.transform)
+    observed_lm_in_map = quaternion_matrix([observed_lm.pose.orientation.x, observed_lm.pose.orientation.y,\
+                                            observed_lm.pose.orientation.z, observed_lm.pose.orientation.w])
+    observed_lm_in_map[0:3, 3] = detected_marker_position
 
-    new_x = old_odom.transform.translation.x + odom_diff.translation.x
-    new_y = old_odom.transform.translation.y + odom_diff.translation.y
-
+    # Calculate the odom position based on the observed landmark
+    odom_in_map = np.matmul(observed_lm_in_map, marker_odom_transformation)
+    odom_orientation = euler_from_matrix(odom_in_map)
     
     # Create the tranformation from 'map' to 'cf1/odom'
-    odom = TransformStamped()
+    odom = PoseStamped()
     odom.header.stamp = marker.header.stamp
     odom.header.frame_id = 'map'
-    odom.child_frame_id = 'cf1/odom_est'
-    odom.transform.translation.x = new_x
-    odom.transform.translation.y = new_y
-    odom.transform.translation.z = 0.
+    odom.pose.position.x = odom_in_map[0,3]
+    odom.pose.position.y = odom_in_map[1,3]
+    odom.pose.position.z = 0.
 
-    quaternion_diff = (odom_diff.rotation.x, odom_diff.rotation.y, odom_diff.rotation.z, odom_diff.rotation.w)
-    quaternion_old = (old_odom.transform.rotation.x, old_odom.transform.rotation.y, old_odom.transform.rotation.z, old_odom.transform.rotation.w)
-
-    euler_diff = euler_from_quaternion(quaternion_diff)
-    euler_old = euler_from_quaternion(quaternion_old)
-
-    yaw = euler_old[2] + euler_diff[2]
-
-    quaternion = quaternion_from_euler(0., 0., yaw) 
-
-    odom.transform.rotation.x = quaternion[0]
-    odom.transform.rotation.y = quaternion[1]
-    odom.transform.rotation.z = quaternion[2]
-    odom.transform.rotation.w = quaternion[3]
+    (odom.pose.orientation.x,
+    odom.pose.orientation.y,
+    odom.pose.orientation.z,
+    odom.pose.orientation.w) = quaternion_from_euler(0.,0.,odom_orientation[2])
 
     if not init_localisation:
-        trans_broadcaster.sendTransform(odom)
-        odom_measurement = TransformStamped()
-        odom_measurement.header.stamp = marker.header.stamp
-        odom_measurement.header.frame_id = odom.child_frame_id
-        odom_measurement.child_frame_id = 'cf1/base_link_est'
-        odom_measurement.transform.translation.y = drone_position.pose.position.y
-        odom_measurement.transform.translation.x = drone_position.pose.position.x
-        odom_measurement.transform.translation.z = drone_position.pose.position.z
-
-        drone_euler = euler_from_quaternion((drone_position.pose.orientation.x, drone_position.pose.orientation.y, drone_position.pose.orientation.z, drone_position.pose.orientation.w))
-        drone_yaw = drone_euler[2]
-        drone_quaternion = quaternion_from_euler(0.,0.,drone_yaw)
-        odom_measurement.transform.rotation.x = drone_quaternion[0]
-        odom_measurement.transform.rotation.y = drone_quaternion[1]
-        odom_measurement.transform.rotation.z = drone_quaternion[2]
-        odom_measurement.transform.rotation.w = drone_quaternion[3]
-
-        trans_broadcaster.sendTransform(odom_measurement)
-
-        drone_in_map = tf_buf.lookup_transform('map', odom_measurement.child_frame_id, marker.header.stamp, rospy.Duration(.1))
-        odom_updated.publish(drone_in_map)
+        odom_updated.publish(odom)
 
     else:
-        odom.child_frame_id = 'cf1/odom'
         odom_publisher.publish(odom)
         #trans_broadcaster.sendTransform(odom)
         init_localisation = False
@@ -287,8 +240,8 @@ sub_aruco_pos = rospy.Subscriber('/aruco/markers', MarkerArray, aruco_pos_callba
 sub_traffic_pos = rospy.Subscriber('/6D_sign', Landmark, sixD_pose_callback, queue_size=1)
 sub_drone_pos = rospy.Subscriber('/cf1/pose', PoseStamped, drone_position_callback)
 marker_array = rospy.Subscriber('landmarks', LandmarkArray, store_landmarks)
-odom_updated = rospy.Publisher('/ekf/cf1_measurement', TransformStamped, queue_size=10)
-odom_publisher = rospy.Publisher('/loc/odom_est', TransformStamped, queue_size=10)
+odom_updated = rospy.Publisher('/ekf/cf1_measurement', PoseStamped, queue_size=10)
+odom_publisher = rospy.Publisher('/loc/odom_est', PoseStamped, queue_size=10)
 
 measurement_covariance = [  0.1, 0,    0,    0,    0,    0,    
                                 0,    0.1, 0,    0,    0,    0,    
