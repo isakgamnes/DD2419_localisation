@@ -57,9 +57,9 @@ process_noise_v_k_minus_1 = np.array([0.02, 0.02, 0.06])
 # When Q is large, the Kalman Filter tracks large changes in
 # the sensor measurements more closely than for smaller Q.
 # Q is a square matrix that has the same number of rows as states.
-Q_k = np.array([[0.02,   0,   0],
-                [0, 0.02,   0],
-                [0,   0, 0.05]])
+Q_k = np.array([[0.1,   0,   0],
+                [0, 0.1,   0],
+                [0,   0, 0.005]])
 
 # Measurement matrix H_k
 # Used to convert the predicted state estimate at time k
@@ -76,13 +76,13 @@ H_k = np.array([[1.0,  0,   0],
 # Sensor measurement noise covariance matrix R_k
 # Has the same number of rows and columns as sensor measurements.
 # If we are sure about the measurements, R will be near zero.
-R_k = np.array([[1,   0,    0],
-                [0,   1,    0],
-                [0,   0,  np.pi/4]])
+R_k = np.array([[.75,   0,    0],
+                [0,   .75,    0],
+                [0,   0,  np.pi/8]])
 
 # Sensor noise. This is a vector with the
 # number of elements equal to the number of sensor measurements.
-sensor_noise_w_k = np.array([0.05, 0.05, np.pi/8])
+sensor_noise_w_k = np.array([0.05, 0.05, np.pi/12])
 
 def ekf(z_k_observation_vector, state_estimate_k_minus_1,
         control_vector_k_minus_1, P_k_minus_1, B):
@@ -148,10 +148,8 @@ def ekf(z_k_observation_vector, state_estimate_k_minus_1,
     # Calculate the difference between the actual sensor measurements
     # at time k minus what the measurement model predicted
     # the sensor measurements would be for the current timestep k.
-    measurement_residual_y_k = z_k_observation_vector - (
-        (np.matmul(H_k, state_estimate_k)) + (
-            sensor_noise_w_k))
-
+    measurement_residual_y_k = z_k_observation_vector - np.matmul(H_k, state_estimate_k) + sensor_noise_w_k
+    
     # rospy.logwarn_throttle(1,'Observation={}'.format(z_k_observation_vector))
 
     # Calculate the measurement residual covariance
@@ -241,6 +239,7 @@ def run_ekf(msg):
 
     control_vector_k_minus_1 = np.array([deltas_in_map.pose.position.x, deltas_in_map.pose.position.y, delta_euler[2]])
     #rospy.logwarn_throttle(1, 'Measurement: {}'.format(msg))
+    
     state_estimate_k, P_k = ekf(
         measurement_z_k,  # Most recent sensor measurement
         state_estimate_k_minus_1,  # Our most recent estimate of the state
@@ -319,12 +318,12 @@ if __name__ == "__main__":
     odom_publisher = rospy.Publisher('/loc/odom_est', TransformStamped, queue_size=10)
 
     # Variables used for ros
-    drone_in_map = [0., 0., 0., 0., 0., 0.]
+    drone_in_map = np.array([0., 0., 0., 0., 0., 0.])
     state_estimate_k_minus_1 = None
-    odom_drone_pose_k = [0., 0., 0.]
+    odom_drone_pose_k = np.array([0., 0., 0.])
     time_stamp_last_update = None
-    odom_drone_pose_k_minus_1 = [0., 0., 0.]
-    drone_in_map_k_minus_1 = [0., 0., 0.]
+    odom_drone_pose_k_minus_1 = np.array([0., 0., 0.])
+    drone_in_map_k_minus_1 = np.array([0., 0., 0.])
     P_k_minus_1 = np.array([[0.1,  0,   0],
                             [0,  0.1, 0],
                             [0,  0,   0.1]])

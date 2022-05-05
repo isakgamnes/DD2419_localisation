@@ -52,29 +52,35 @@ def data_assoc(marker):
             marker_stamped.pose.orientation = marker.pose.pose.orientation
 
             transformed = tf_buf.transform(marker_stamped, 'map')
-            mahalanobis_observed = [transformed.pose.position.x, transformed.pose.position.y,\
-                                    transformed.pose.position.z, transformed.pose.orientation.x,\
-                                    transformed.pose.orientation.y, transformed.pose.orientation.z,\
-                                    transformed.pose.orientation.w]
-            covariance_mahalanobis = np.eye(len(mahalanobis_observed))
-            # covariance_mahalanobis[3,3] = 50
-            # covariance_mahalanobis[4,4] = 50
-            # covariance_mahalanobis[5,5] = 50
-            # covariance_mahalanobis[6,6] = 50
+            observed_marker_xyz = np.array([transformed.pose.position.x, transformed.pose.position.y,\
+                                    transformed.pose.position.z])
+            # Normalize the xyz coordinates
+            observed_marker_xyz = observed_marker_xyz/float(np.linalg.norm(observed_marker_xyz))
+
+            observed_marker_rpy =  np.array([transformed.pose.orientation.x, transformed.pose.orientation.y,\
+                                    transformed.pose.orientation.z, transformed.pose.orientation.w])
+            
+            observed_marker = np.concatenate((observed_marker_xyz, observed_marker_rpy))
+
             shortest_dist = float('inf')
             for landmark in landmarks:
                 # Check that we are testing for an Aruco Marker
                 if landmark.name == 'ArucoMarker':
-                    position = [landmark.pose.position.x, landmark.pose.position.y, landmark.pose.position.z,\
-                                landmark.pose.orientation.x, landmark.pose.orientation.y, \
-                                landmark.pose.orientation.z, landmark.pose.orientation.w]
+                    marker_xyz = np.array([landmark.pose.position.x, landmark.pose.position.y, \
+                                landmark.pose.position.z])
+                    marker_xyz = marker_xyz/float(np.linalg.norm(marker_xyz))
+
+                    marker_rpy = np.array([landmark.pose.orientation.x, landmark.pose.orientation.y,\
+                                 landmark.pose.orientation.z, landmark.pose.orientation.w])
+                    marker_pose = np.concatenate((marker_xyz, marker_rpy))
+                    
+                    lm_dist = np.linalg.norm(observed_marker - marker_pose)
                     # Calculate the distance to the current Aruco Marker
-                    lm_dist_sq = mahalanobis(mahalanobis_observed, position, covariance_mahalanobis)
-                    rospy.logwarn_throttle(-1, 'Marker with id: {}, Mahalanobis distance: {}'.format(landmark.id, lm_dist_sq))
+                    #rospy.logwarn_throttle(-1, 'Marker with id: {}, Normalized distance: {}'.format(landmark.id, lm_dist))
                     #rospy.logwarn_throttle(-1, 'ID: {}, position: {}'.format(landmark.id,position))
                     # If the distance is shorter than the shorest distance, store this marker
-                    if lm_dist_sq < shortest_dist:
-                        shortest_dist = lm_dist_sq
+                    if lm_dist < shortest_dist:
+                        shortest_dist = lm_dist
                         assoc_lm = landmark
         return assoc_lm
     else: 
