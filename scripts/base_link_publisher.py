@@ -33,11 +33,10 @@ def updated_tf_callback(msg):
     transformation.transform.translation.y = msg.pose.position.y
     transformation.transform.translation.z = 0.
 
-    quaternion = (
-    msg.pose.orientation.x,
-    msg.pose.orientation.y,
-    msg.pose.orientation.z,
-    msg.pose.orientation.w)
+    quaternion = (  msg.pose.orientation.x,
+                    msg.pose.orientation.y,
+                    msg.pose.orientation.z,
+                    msg.pose.orientation.w)
     
     
     euler = euler_from_quaternion(quaternion)

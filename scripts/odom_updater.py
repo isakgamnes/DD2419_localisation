@@ -28,32 +28,29 @@ drone_position_updated = False
 landmarks_registrered = False
 landmarks = LandmarkArray().landmarks
 
-def data_assoc(marker):
-    global landmarks, init_localisation, landmarks_registrered
+def data_assoc(marker, use_id=False):
+    global landmarks, landmarks_registrered
     assoc_lm = None
     if landmarks_registrered:
         # Check wether or not to use the id to associate
-        if init_localisation:
+        if use_id:
             for landmark in landmarks:
                 if landmark.name == 'ArucoMarker':
                     # Check if the id of the stored landmarks correspond to the detected
                     if landmark.id == marker.id:
-                        # Tell the system not to use ID in next iteration
                         return landmark  
         else:
-            if not tf_buf.can_transform('map', marker.header.frame_id, marker.header.stamp, timeout=rospy.Duration(.1)):
-                rospy.logwarn_throttle(1, 'Cannot transform from {} to map frame..'.format(marker.header.frame_id))
-                return
-        
             observed_marker_xyz = np.array([marker.pose.position.x, marker.pose.position.y,\
                                     marker.pose.position.z])
             # Normalize the xyz coordinates
-            observed_marker_xyz = observed_marker_xyz/np.linalg.norm(observed_marker_xyz)
+            #observed_marker_xyz = observed_marker_xyz/np.linalg.norm(observed_marker_xyz)
 
-            observed_marker_rpy =  np.array([marker.pose.orientation.x, marker.pose.orientation.y,\
-                                    marker.pose.orientation.z, marker.pose.orientation.w])
+            observed_marker_euler =  np.array(euler_from_quaternion([marker.pose.orientation.x, marker.pose.orientation.y,\
+                                                                   marker.pose.orientation.z, marker.pose.orientation.w]))
             
-            observed_marker = np.concatenate((observed_marker_xyz, observed_marker_rpy))
+            #observed_marker_euler / observed_marker_euler/np.linalg.norm(observed_marker_euler)
+
+            observed_marker = np.concatenate((observed_marker_xyz, observed_marker_euler))
 
             shortest_dist = float('inf')
             for landmark in landmarks:
@@ -61,14 +58,17 @@ def data_assoc(marker):
                 if landmark.name == 'ArucoMarker':
                     marker_xyz = np.array([landmark.pose.position.x, landmark.pose.position.y, \
                                            landmark.pose.position.z])
-                    marker_xyz = marker_xyz/np.linalg.norm(marker_xyz)
+                    #marker_xyz = marker_xyz/np.linalg.norm(marker_xyz)
 
-                    marker_rpy = np.array([landmark.pose.orientation.x, landmark.pose.orientation.y,\
-                                           landmark.pose.orientation.z, landmark.pose.orientation.w])
+                    marker_euler = np.array(euler_from_quaternion([landmark.pose.orientation.x, landmark.pose.orientation.y,\
+                                                                 landmark.pose.orientation.z, landmark.pose.orientation.w]))
                     
-                    marker_pose = np.concatenate((marker_xyz, marker_rpy))
+                    #marker_euler = marker_euler/np.linalg.norm(marker_euler)
+
+                    marker_pose = np.concatenate((marker_xyz, marker_euler))
                     
                     lm_dist = np.linalg.norm(observed_marker - marker_pose)
+                    rospy.logwarn(lm_dist)
                     # Calculate the distance to the current Aruco Marker
                     #rospy.logwarn_throttle(-1, 'Marker with id: {}, Normalized distance: {}'.format(landmark.id, lm_dist))
                     #rospy.logwarn_throttle(-1, 'ID: {}, position: {}'.format(landmark.id,position))
@@ -76,6 +76,9 @@ def data_assoc(marker):
                     if lm_dist < shortest_dist:
                         shortest_dist = lm_dist
                         assoc_lm = landmark
+            if shortest_dist > 2:
+                rospy.logwarn('No marker close enough. Assuming outlier...')
+                return None
         return assoc_lm
     else: 
         return None
@@ -93,20 +96,25 @@ def estimate_odom_pos(marker):
     marker_pose = PoseStamped()
     marker_pose.header = marker.header
     marker_pose.pose = marker.pose.pose
-
+    if not tf_buf.can_transform('map', marker.header.frame_id, marker.header.stamp, timeout=rospy.Duration(.1)):
+                rospy.logwarn_throttle(1, 'Cannot transform from {} to map frame..'.format(marker.header.frame_id))
+                return
     # Get the transformation from map to the camera frame
     map_camera_transformation = tf_buf.lookup_transform('map', marker.header.frame_id, marker.header.stamp, rospy.Duration(.1))
+    
+    if not tf_buf.can_transform('cf1/odom', marker.header.frame_id, marker.header.stamp, timeout=rospy.Duration(.1)):
+                rospy.logwarn_throttle(1, 'Cannot transform from {} to cf1/odom frame..'.format(marker.header.frame_id))
+                return
     # Get the transformation from odom to the camera frame
     odom_camera_transformation = tf_buf.lookup_transform('cf1/odom', marker.header.frame_id, marker.header.stamp, rospy.Duration(.1))
     
     # Convert the detected marker into the map frame
     marker_in_map = tf2_geometry_msgs.do_transform_pose(marker_pose, map_camera_transformation)
-    # Convert the detected marker into the odom frame
-    marker_in_odom = tf2_geometry_msgs.do_transform_pose(marker_pose, odom_camera_transformation)
+    
 
     if init_localisation:
         # Figure out which marker we are looking at
-        observed_lm = data_assoc(marker)
+        observed_lm = data_assoc(marker, use_id=True)
     else:
         observed_lm = data_assoc(marker_in_map)
     # Check if it managed to associate
@@ -118,6 +126,9 @@ def estimate_odom_pos(marker):
         rospy.logwarn('Associated correct marker')
     else:
         rospy.logwarn('Associated wrong marker')
+
+    # Convert the detected marker into the odom frame
+    marker_in_odom = tf2_geometry_msgs.do_transform_pose(marker_pose, odom_camera_transformation)
 
     # Get the marker position and orientation in the odom frame
     marker_position = marker_in_odom.pose.position
@@ -132,13 +143,15 @@ def estimate_odom_pos(marker):
                                                                                          -marker_position.y,\
                                                                                          -marker_position.z,\
                                                                                              1]))
-
+    
     # Create matrix from the associated marker
     detected_marker_position = np.array([observed_lm.pose.position.x, observed_lm.pose.position.y, observed_lm.pose.position.z])
     
     observed_lm_in_map = quaternion_matrix([observed_lm.pose.orientation.x, observed_lm.pose.orientation.y,\
                                             observed_lm.pose.orientation.z, observed_lm.pose.orientation.w])
     observed_lm_in_map[0:3, 3] = detected_marker_position
+
+    rospy.logwarn(observed_lm_in_map)
 
     # Calculate the odom position based on the observed landmark
     odom_in_map = np.matmul(observed_lm_in_map, marker_odom_transformation)
@@ -159,7 +172,7 @@ def estimate_odom_pos(marker):
 
     if not init_localisation:
         odom_updated.publish(odom)
-
+        #rospy.logwarn(odom)
     else:
         odom_publisher.publish(odom)
         #trans_broadcaster.sendTransform(odom)

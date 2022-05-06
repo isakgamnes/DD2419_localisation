@@ -57,9 +57,9 @@ process_noise_v_k_minus_1 = np.array([0.001, 0.001, 0.001])
 # When Q is large, the Kalman Filter tracks large changes in
 # the sensor measurements more closely than for smaller Q.
 # Q is a square matrix that has the same number of rows as states.
-Q_k = np.array([[1,   0,   0],
-                [0, 1,   0],
-                [0,   0, 1]])
+Q_k = np.array([[.1,   0,   0],
+                [0, .1,   0],
+                [0,   0, .1]])
 
 # Measurement matrix H_k
 # Used to convert the predicted state estimate at time k
@@ -76,13 +76,13 @@ H_k = np.array([[1.0,  0,   0],
 # Sensor measurement noise covariance matrix R_k
 # Has the same number of rows and columns as sensor measurements.
 # If we are sure about the measurements, R will be near zero.
-R_k = np.array([[.1,   0,    0],
-                [0,   .1,    0],
-                [0,   0,    .1]])
+R_k = np.array([[.5,   0,    0],
+                [0,   .5,    0],
+                [0,   0,    1]])
 
 # Sensor noise. This is a vector with the
 # number of elements equal to the number of sensor measurements.
-sensor_noise_w_k = np.array([0.05, 0.05, np.pi/12])
+sensor_noise_w_k = np.array([0.1, 0.1, np.pi/10])
 
 def ekf(z_k_observation_vector, state_estimate_k_minus_1,
         P_k_minus_1):
@@ -126,7 +126,7 @@ def ekf(z_k_observation_vector, state_estimate_k_minus_1,
     # Predict the state estimate at time k based on the state
     # estimate at time k-1 and the control input applied at time k-1.
     # rospy.logwarn_throttle(1,'B is: {}'.format(B))
-    state_estimate_k =  np.matmul(A_k_minus_1, state_estimate_k_minus_1) + process_noise_v_k_minus_1
+    state_estimate_k =  np.matmul(A_k_minus_1, state_estimate_k_minus_1) #+ process_noise_v_k_minus_1
     # rospy.logwarn_throttle(-1, 'Measurement: [{}, {}, {}]'.format(z_k_observation_vector[0],
     #                                                             z_k_observation_vector[1],
     #                                                             z_k_observation_vector[2]))
@@ -238,6 +238,7 @@ def run_ekf(msg):
     else: 
         return"""
     odom_publisher.publish(updated_odom)
+    #rospy.logwarn(updated_odom)
     odom_drone_pose_k_minus_1[0] = odom_drone_pose_k[0]
     odom_drone_pose_k_minus_1[1] = odom_drone_pose_k[1]
     odom_drone_pose_k_minus_1[2] = odom_drone_pose_k[2]
